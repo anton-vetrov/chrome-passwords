@@ -12,6 +12,9 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <iterator>
+#include <vector>
+
 #include <tchar.h>
 #include <windows.h>
 #include <Wincrypt.h>

