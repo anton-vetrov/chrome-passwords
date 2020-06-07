@@ -109,7 +109,6 @@ stringstream getCookies(
 	** only. Normally, we would keep calling sqlite3_step until it
 	** returned something other than SQLITE_ROW.
 	*/
-	int expires = sqlite3_column_int(pStmt, 3);
 
 	rc = sqlite3_step(pStmt);
 	cout << "RC: " << rc << endl;
@@ -138,6 +137,8 @@ stringstream getCookies(
 		catch (...)
 		{
 		}
+
+		unsigned long long int expires = sqlite3_column_int64(pStmt, 3);
 
 		dump << endl;
 		dump << "Host   :" << sqlite3_column_text(pStmt, 0) << endl;
